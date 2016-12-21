@@ -7,7 +7,8 @@
             HttpServletRequestWithAlternateRequestUri)
            (javax.servlet Filter DispatcherType)
            (java.util EnumSet)
-           (org.eclipse.jetty.servlet FilterHolder ServletContextHandler))
+           (org.eclipse.jetty.servlet FilterHolder ServletContextHandler)
+           (ch.qos.logback.access.servlet TeeFilter))
   (:require [schema.core :as schema]
             [ring.util.servlet :as servlet]
             [clojure.string :as str]
@@ -147,3 +148,4 @@
     (doto (normalize-uri-handler)
       (.setHandler handler))
     handler))
+

@@ -3,18 +3,18 @@
                                      HttpConfiguration HttpConnectionFactory
                                      ConnectionFactory AbstractConnectionFactory)
            (org.eclipse.jetty.server.handler AbstractHandler ContextHandler HandlerCollection
-                                             ContextHandlerCollection AllowSymLinkAliasChecker StatisticsHandler)
+                                             ContextHandlerCollection AllowSymLinkAliasChecker StatisticsHandler HandlerWrapper)
            (org.eclipse.jetty.util.resource Resource)
            (org.eclipse.jetty.util.thread QueuedThreadPool)
            (org.eclipse.jetty.util.ssl SslContextFactory)
-           (javax.servlet.http HttpServletResponse)
+           (javax.servlet.http HttpServletResponse HttpServletRequest)
            (java.util.concurrent TimeoutException)
            (org.eclipse.jetty.servlets.gzip GzipHandler)
-           (org.eclipse.jetty.servlet ServletContextHandler ServletHolder DefaultServlet)
+           (org.eclipse.jetty.servlet ServletContextHandler ServletHolder DefaultServlet FilterHolder)
            (org.eclipse.jetty.webapp WebAppContext)
-           (java.util HashSet)
+           (java.util HashSet EnumSet)
            (org.eclipse.jetty.http MimeTypes HttpHeader HttpHeaderValue)
-           (javax.servlet Servlet ServletContextListener)
+           (javax.servlet Servlet ServletContextListener DispatcherType FilterChain FilterConfig)
            (org.eclipse.jetty.proxy ProxyServlet)
            (java.net URI)
            (java.security Security)
@@ -23,7 +23,9 @@
            (java.lang.management ManagementFactory)
            (org.eclipse.jetty.jmx MBeanContainer)
            (org.eclipse.jetty.util URIUtil BlockingArrayQueue)
-           (java.io IOException))
+           (java.io IOException)
+           (ch.qos.logback.access.servlet TeeFilter TeeHttpServletResponse TeeHttpServletRequest)
+           (ch.qos.logback.access AccessConstants))
 
   (:require [ring.util.servlet :as servlet]
             [ring.util.codec :as codec]
@@ -414,16 +416,33 @@
       (.start handler)))
   handler)
 
+(defn- ring-handler*
+  "Returns an Jetty Handler implementation for the given Ring handler."
+  [handler]
+  (reify FilterChain
+    (doFilter [_ request response]
+      (let [request-map  (servlet/build-request-map request)
+            response-map (handler request-map)
+            jetty-request (.getAttribute request "TK_JETTY_REQUEST")]
+        (when response-map
+          (servlet/update-servlet-response response response-map)
+          (.setHandled jetty-request true))))))
+
+(defn- tee-filter-config
+  []
+  (reify FilterConfig
+    (getInitParameter [_ _] nil)))
+
 (defn- ring-handler
   "Returns an Jetty Handler implementation for the given Ring handler."
   [handler]
-  (proxy [AbstractHandler] []
-    (handle [_ ^Request base-request request response]
-      (let [request-map  (servlet/build-request-map request)
-            response-map (handler request-map)]
-        (when response-map
-          (servlet/update-servlet-response response response-map)
-          (.setHandled base-request true))))))
+  (let [tee-filter (TeeFilter.)
+        _ (.init tee-filter (tee-filter-config))
+        filter-chain (ring-handler* handler)]
+    (proxy [AbstractHandler] []
+      (handle [_ ^Request base-request request response]
+        (.setAttribute request "TK_JETTY_REQUEST" base-request)
+        (.doFilter tee-filter request response filter-chain)))))
 
 (schema/defn ^:always-validate
   proxy-servlet :- ProxyServlet
@@ -685,6 +704,7 @@
        (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler!
         handler))
      (add-handler webserver-context handler enable-trailing-slash-redirect?))))
+
 
 (schema/defn ^:always-validate
   add-ring-handler :- ContextHandler

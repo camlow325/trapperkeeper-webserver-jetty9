@@ -3,7 +3,8 @@
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>./dev-resources/access.log</file>
         <encoder>
-            <pattern>%h %l %u %user %date "%r" %s %b</pattern>
+            <!--pattern>%h %l %u %user %date "%r" %s %b</pattern-->
+            <pattern>%fullRequest%n%n%fullResponse</pattern>
         </encoder>
     </appender>
 
